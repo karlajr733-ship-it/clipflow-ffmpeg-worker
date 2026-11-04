@@ -29,7 +29,23 @@ def safe_url(url:str):
         raise HTTPException(400,"Unresolvable host")
     return url
 async def download(url:str,path:Path):
+    if urlparse(url).hostname in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"):
+        def get_video():
+            options = {
+                "format": "best[ext=mp4]/best",
+                "outtmpl": str(path),
+                "noplaylist": True,
+                "max_filesize": MAX_BYTES,
+                "quiet": True,
+            }
+            with yt_dlp.YoutubeDL(options) as downloader:
+                downloader.download([url])
+        await asyncio.to_thread(get_video)
+        if not path.exists() or path.stat().st_size > MAX_BYTES:
+            raise HTTPException(413, "Video unavailable or too large")
+        return
     safe_url(url)
+  
     async with httpx.AsyncClient(timeout=90,follow_redirects=False) as client:
         async with client.stream("GET",url) as response:
             response.raise_for_status()
