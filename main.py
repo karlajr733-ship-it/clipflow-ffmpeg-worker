@@ -2,6 +2,7 @@ import os, re, hmac, hashlib, time, tempfile, subprocess, json, asyncio, ipaddre
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 import httpx
+import yt_dlp
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
