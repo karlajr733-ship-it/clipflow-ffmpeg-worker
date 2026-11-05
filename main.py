@@ -12,7 +12,7 @@ SECRET=os.environ.get("CLIPFLOW_WORKER_SECRET","")
 PUBLIC=os.environ.get("PUBLIC_BASE_URL","").rstrip("/")
 TEMP=Path("/tmp/clipflow")
 TEMP.mkdir(exist_ok=True)
-MAX_BYTES=100_000_000
+MAX_BYTES=3_000_000_000
 def auth(request:Request):
     if not SECRET or not hmac.compare_digest(request.headers.get("x-clipflow-secret",""),SECRET):
         raise HTTPException(401,"Unauthorized")
