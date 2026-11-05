@@ -12,7 +12,7 @@ SECRET=os.environ.get("CLIPFLOW_WORKER_SECRET","")
 PUBLIC=os.environ.get("PUBLIC_BASE_URL","").rstrip("/")
 TEMP=Path("/tmp/clipflow")
 TEMP.mkdir(exist_ok=True)
-MAX_BYTES=3_000_000_000
+MAX_BYTES=1_000_000_000
 def auth(request:Request):
     if not SECRET or not hmac.compare_digest(request.headers.get("x-clipflow-secret",""),SECRET):
         raise HTTPException(401,"Unauthorized")
@@ -48,12 +48,12 @@ async def download(url:str,path:Path):
                 }
             )
             if response.status_code >= 400:
-                raise HTTPException(502, "VidFetch import request failed")
+                raise HTTPException(502, f"VidFetch import request failed (HTTP {response.status_code})")
 
             job_id = response.json()["id"]
             video_url = None
 
-            for attempt in range(100):
+            for attempt in range(400):
                 await asyncio.sleep(3)
                 result = await client.get(
                     f"https://api.vidfetch.dev/v1/downloads/{job_id}",
@@ -108,7 +108,7 @@ async def prepare(request:Request,body:Prepare):
     await download(body.sourceUrl,source)
     metadata=json.loads(run("ffprobe","-v","quiet","-show_format","-of","json",str(source)).stdout)
     duration=float(metadata["format"]["duration"])
-    if not 5<=duration<=1800:raise HTTPException(400,"Duration must be 5 sec to 30 min")
+    if not 5<=duration<=3600:raise HTTPException(400,"Duration must be 5 sec to 30 min")
     audio=folder/"audio.mp3"
     run("ffmpeg","-y","-i",str(source),"-vn","-ac","1","-ar","16000","-b:a","64k",str(audio))
     exp=int(time.time())+3600
@@ -170,7 +170,7 @@ async def render(request:Request,body:Render):
     done=[]
     async with httpx.AsyncClient(timeout=120) as client:
         for c in body.clips:
-            if not re.fullmatch(r"[0-9a-fA-F-]{36}",c.id) or not (0<=c.start<c.end<=1800):
+            if not re.fullmatch(r"[0-9a-fA-F-]{36}",c.id) or not (0<=c.start<c.end<=3600):
                 raise HTTPException(400,"Invalid clip")
             output=folder/(c.id+".mp4")
             ass=folder/(c.id+".ass")
