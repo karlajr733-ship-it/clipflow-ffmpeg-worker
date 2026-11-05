@@ -29,21 +29,52 @@ def safe_url(url:str):
         raise HTTPException(400,"Unresolvable host")
     return url
 async def download(url:str,path:Path):
+    
     if urlparse(url).hostname in ("youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"):
-        def get_video():
-            options = {
-                "format": "best[ext=mp4]/best",
-                "outtmpl": str(path),
-                "noplaylist": True,
-                "max_filesize": MAX_BYTES,
-                "quiet": True,
-            }
-            with yt_dlp.YoutubeDL(options) as downloader:
-                downloader.download([url])
-        await asyncio.to_thread(get_video)
-        if not path.exists() or path.stat().st_size > MAX_BYTES:
-            raise HTTPException(413, "Video unavailable or too large")
-        return
+        api_key = os.environ.get("VIDEOFETCH_API_KEY", "")
+        if not api_key:
+            raise HTTPException(503, "VidFetch API key missing")
+
+        headers = {"Authorization": f"Bearer {api_key}"}
+
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.vidfetch.dev/v1/downloads",
+                headers=headers,
+                json={
+                    "url": url,
+                    "format": "720p",
+                    "destination": "url"
+                }
+            )
+            if response.status_code >= 400:
+                raise HTTPException(502, "VidFetch import request failed")
+
+            job_id = response.json()["id"]
+            video_url = None
+
+            for attempt in range(100):
+                await asyncio.sleep(3)
+                result = await client.get(
+                    f"https://api.vidfetch.dev/v1/downloads/{job_id}",
+                    headers=headers
+                )
+                if result.status_code >= 400:
+                    raise HTTPException(502, "VidFetch status check failed")
+
+                job = result.json()
+                if job["status"] == "completed":
+                    video_url = job.get("download_url")
+                    break
+                if job["status"] == "failed":
+                    raise HTTPException(422, "YouTube import failed")
+
+        if not video_url:
+            raise HTTPException(504, "YouTube import timed out")
+
+        safe_url(video_url)
+        url = video_url
+
     safe_url(url)
   
     async with httpx.AsyncClient(timeout=90,follow_redirects=False) as client:
